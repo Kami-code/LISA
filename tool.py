@@ -195,10 +195,10 @@ def mask2json(part_mask):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--split_path', default='dataset/pascal_part/VOCdevkit/VOC2010/ImageSets/Main')
+    parser.add_argument('--split_path', default='dataset/vlpart/pascal_part/VOCdevkit/VOC2010/ImageSets/Main')
     parser.add_argument('--split', default='train.txt')
-    parser.add_argument('--ann_path', default='dataset/pascal_part/Annotations_Part')
-    parser.add_argument('--ann_out', default='dataset/pascal_part/train.json')
+    parser.add_argument('--ann_path', default='dataset/vlpart/pascal_part/Annotations_Part')
+    parser.add_argument('--ann_out', default='dataset/vlpart/pascal_part/train.json')
     parser.add_argument('--only_base', action='store_true')
     args = parser.parse_args()
 

@@ -184,7 +184,12 @@ class LISAForCausalLM(LlavaLlamaForCausalLM):
         batch_size = image_embeddings.shape[0]
         assert batch_size == len(offset) - 1
 
+        # input_ids: [bs, seq_len]
+        # input_ids[:, 1:]: [bs, seq_len - 1], we ignore the first <bos> token which means the start of the sequence
+
         seg_token_mask = input_ids[:, 1:] == self.seg_token_idx
+        # seg_token_mask: [bs, seq_len - 1]
+        # torch.zeros((seg_token_mask.shape[0], 1)).bool().cuda(): [bs, 1]
         seg_token_mask = torch.cat(
             [
                 seg_token_mask,
@@ -193,10 +198,13 @@ class LISAForCausalLM(LlavaLlamaForCausalLM):
             dim=1,
         )
         # hack for IMAGE_TOKEN_INDEX (we suppose that there is only one image, and it is in the front)
+        # torch.zeros((seg_token_mask.shape[0], 255)).bool().cuda(): [bs, 255]
         seg_token_mask = torch.cat(
             [torch.zeros((seg_token_mask.shape[0], 255)).bool().cuda(), seg_token_mask],
             dim=1,
         )
+        # seg_token_mask: [bs, 255 + (seq_len - 1) + 1]
+
 
         if inference:
             n_batch = 1
@@ -251,24 +259,35 @@ class LISAForCausalLM(LlavaLlamaForCausalLM):
 
         last_hidden_state = torch.stack(hidden_states, dim=-1).sum(dim=-1)
         pred_embeddings = last_hidden_state[seg_token_mask]
-        seg_token_counts = seg_token_mask.int().sum(-1)  # [bs, ]
+        # pred_embeddings: [bs, num_seg_tokens, hidden_size]
+
+        seg_token_counts = seg_token_mask.int().sum(-1)
+        # seg_token_counts: [bs, ], the number of seg tokens in each sentence
 
         seg_token_offset = seg_token_counts.cumsum(-1)
+        # seg_token_offset: [bs, ], the offset of each seg token in the concatenated sequence
+
         seg_token_offset = torch.cat(
             [torch.zeros(1).long().cuda(), seg_token_offset], dim=0
         )
+        # seg_token_offset: [bs + 1, ]
 
         seg_token_offset = seg_token_offset[offset]
 
+
+        # 根据调整后的seg_token_offset, 将pred_embeddings划分到各图像,存入pred_embeddings_列表
         pred_embeddings_ = []
         for i in range(len(seg_token_offset) - 1):
             start_i, end_i = seg_token_offset[i], seg_token_offset[i + 1]
             pred_embeddings_.append(pred_embeddings[start_i:end_i])
         pred_embeddings = pred_embeddings_
+        # 划分后的pred_embeddings是一个长度为 bs 的列表, 其中 pred_embeddings[i] 为第 i 张图像对应的所有 segmentation token 的表示，形状为 [num_seg_tokens, hidden_size].
 
         multimask_output = False
         pred_masks = []
         for i in range(len(pred_embeddings)):
+            # 分别处理 bs 中的每张图片的所有<SEG>
+            # pred_embeddings[i].unsqueeze(1): [num_seg_tokens, 1, hidden_size]
             (
                 sparse_embeddings,
                 dense_embeddings,
@@ -278,6 +297,8 @@ class LISAForCausalLM(LlavaLlamaForCausalLM):
                 masks=None,
                 text_embeds=pred_embeddings[i].unsqueeze(1),
             )
+            # sparse_embeddings: [num_seg_tokens, 1, hidden_size] todo
+            # dense_embeddings: [num_seg_tokens, 1, hidden_size] todo
             sparse_embeddings = sparse_embeddings.to(pred_embeddings[i].dtype)
             low_res_masks, iou_predictions = self.model.visual_model.mask_decoder(
                 image_embeddings=image_embeddings[i].unsqueeze(0),
@@ -286,11 +307,13 @@ class LISAForCausalLM(LlavaLlamaForCausalLM):
                 dense_prompt_embeddings=dense_embeddings,
                 multimask_output=multimask_output,
             )
+            # low_res_masks: [num_seg_tokens, 1, H, W] todo
             pred_mask = self.model.visual_model.postprocess_masks(
                 low_res_masks,
                 input_size=resize_list[i],
                 original_size=label_list[i].shape,
             )
+            # pred_mask: [num_seg_tokens, 1, H, W] todo
             pred_masks.append(pred_mask[:, 0])
 
         model_output = output

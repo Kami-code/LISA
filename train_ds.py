@@ -173,6 +173,7 @@ def main(args):
         args.conv_type
     ]
 
+    # lora_r means the number of layers to be replaced by LORA
     lora_r = args.lora_r
     if lora_r > 0:
 
@@ -227,6 +228,7 @@ def main(args):
             print("n: ", n, "p.shape: ", p.shape)
             p.requires_grad = True
 
+    # build dataset
     world_size = torch.cuda.device_count()
     args.distributed = world_size > 1
     train_dataset = HybridDataset(
@@ -455,6 +457,7 @@ def train(
                 input_dict["images"] = input_dict["images"].float()
                 input_dict["images_clip"] = input_dict["images_clip"].float()
 
+            # pass the input_dict to the model and get the loss from the output
             output_dict = model(**input_dict)
 
             loss = output_dict["loss"]
